@@ -168,24 +168,29 @@ unsigned int get_hash_digestsize(struct hash_desc_table *desc_table)
 int compute_hash_bio(struct hash_desc_table *desc_table,
 		     struct bio *bio, char *hash)
 {
+	printk(KERN_DEBUG "compute_hash_bio\n");
+	printk(KERN_DEBUG "chb bio vec count = %d\n", bio->bi_vcnt);
 	int ret = 0;
 	unsigned long slot;
 	struct bio_vec bvec;
 	struct bvec_iter iter;
-       struct shash_desc *desc;
+    struct shash_desc *desc;
 
 	slot = get_next_slot(desc_table);
 	desc = slot_to_desc(desc_table, slot);
 
-       ret = crypto_shash_init(desc);
+    ret = crypto_shash_init(desc);
 	if (ret)
 		goto out;
+	
+	int vec_num = 0;
 	__bio_for_each_segment(bvec, bio, iter, bio->bi_iter) {
-	   crypto_shash_update(desc,
-	   page_address(bvec.bv_page)+bvec.bv_offset,
-	   bvec.bv_len);
+	   crypto_shash_update(desc, page_address(bvec.bv_page)+bvec.bv_offset, bvec.bv_len);
+	   vec_num++;
 	}
+	printk(KERN_DEBUG "chb bio vec num = %d\n", vec_num);
     crypto_shash_final(desc, hash);
+	// printk(KERN_DEBUG "hash = %s\n", hash);
 
 out:
 	put_slot(desc_table, slot);

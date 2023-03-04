@@ -54,9 +54,16 @@ enum backend {
 	BKND_COWBTREE
 };
 
+void observe_bio(struct bio* bio){
+	printk(KERN_DEBUG "observe_bio start\n");
+	printk(KERN_DEBUG "bio vec num = %d\n", bio->bi_vcnt);
+	printk(KERN_DEBUG "observe_bio end\n");
+}
+
 /* Initializes bio. */
 static void bio_zero_endio(struct bio *bio)
 {
+	printk(KERN_DEBUG "bio_zero_endio\n");
 	zero_fill_bio(bio);
 	bio->bi_status = BLK_STS_OK;
 	bio_endio(bio);
@@ -65,16 +72,19 @@ static void bio_zero_endio(struct bio *bio)
 /* Returns the logical block number for the bio. */
 static uint64_t bio_lbn(struct dedup_config *dc, struct bio *bio)
 {
+	printk(KERN_DEBUG "bio_lbn\n");
+	printk(KERN_DEBUG "bio size = %d\n", bio->bi_iter.bi_size);
+	printk(KERN_DEBUG "bio vec count = %d\n", bio->bi_vcnt);
+	
 	sector_t lbn = bio->bi_iter.bi_sector;
-
 	sector_div(lbn, dc->sectors_per_block);
-
 	return lbn;
 }
 
 /* Entry point to the generic block layer. */
 static void do_io_remap_device(struct dedup_config *dc, struct bio *bio)
 {
+	printk(KERN_DEBUG "do_io_remap_device\n");
 	bio_set_dev(bio, dc->data_dev->bdev);
 	generic_make_request(bio);
 }
@@ -85,6 +95,7 @@ static void do_io_remap_device(struct dedup_config *dc, struct bio *bio)
  */
 static void do_io(struct dedup_config *dc, struct bio *bio, uint64_t pbn)
 {
+	printk(KERN_DEBUG "do_io\n");
 	int offset;
 
 	offset = sector_div(bio->bi_iter.bi_sector, dc->sectors_per_block);
@@ -103,6 +114,7 @@ static void do_io(struct dedup_config *dc, struct bio *bio, uint64_t pbn)
  */
 static int handle_read(struct dedup_config *dc, struct bio *bio)
 {
+	printk(KERN_DEBUG "handle_read\n");
 	u64 lbn;
 	u32 vsize;
 	struct lbn_pbn_value lbnpbn_value;
@@ -180,6 +192,7 @@ out:
  */
 int allocate_block(struct dedup_config *dc, uint64_t *pbn_new)
 {
+	printk(KERN_DEBUG "allocate_block\n");
 	int r;
 
 	r = dc->mdops->alloc_data_block(dc->bmd, pbn_new);
@@ -203,6 +216,7 @@ static int alloc_pbnblk_and_insert_lbn_pbn(struct dedup_config *dc,
 					   u64 *pbn_new,
 					   struct bio *bio, uint64_t lbn)
 {
+	printk(KERN_DEBUG "alloc_pbnblk_and_insert_lbn_pbn\n");
 	int r = 0;
 	struct lbn_pbn_value lbnpbn_value;
 
@@ -236,6 +250,7 @@ static int alloc_pbnblk_and_insert_lbn_pbn(struct dedup_config *dc,
 static int __handle_no_lbn_pbn(struct dedup_config *dc,
 			       struct bio *bio, uint64_t lbn, u8 *hash)
 {
+	printk(KERN_DEBUG "__handle_no_lbn_pbn\n");
 	int r, ret;
 	u64 pbn_new;
 	struct hash_pbn_value hashpbn_value;
@@ -296,6 +311,7 @@ static int __handle_has_lbn_pbn(struct dedup_config *dc,
 				struct bio *bio, uint64_t lbn, u8 *hash,
 				u64 pbn_old)
 {
+	printk(KERN_DEBUG "__handle_has_lbn_pbn\n");
 	int r, ret;
 	u64 pbn_new;
 	struct hash_pbn_value hashpbn_value;
@@ -365,6 +381,7 @@ out:
 static int handle_write_no_hash(struct dedup_config *dc,
 				struct bio *bio, uint64_t lbn, u8 *hash)
 {
+	printk(KERN_DEBUG "handle_write_no_hash\n");
 	int r;
 	u32 vsize;
 	struct lbn_pbn_value lbnpbn_value;
@@ -396,6 +413,7 @@ static int __handle_no_lbn_pbn_with_hash(struct dedup_config *dc,
 					 u64 pbn_this,
 					 struct lbn_pbn_value lbnpbn_value)
 {
+	printk(KERN_DEBUG "__handle_no_lbn_pbn_with_hash\n");
 	int r = 0, ret;
 
 	/* Increments refcount of this passed pbn */
@@ -440,6 +458,7 @@ static int __handle_has_lbn_pbn_with_hash(struct dedup_config *dc,
 					  u64 pbn_this,
 					  struct lbn_pbn_value lbnpbn_value)
 {
+	printk(KERN_DEBUG "__handle_has_lbn_pbn_with_hash\n");
 	int r = 0, ret;
 	struct lbn_pbn_value this_lbnpbn_value;
 	u64 pbn_old;
@@ -507,6 +526,8 @@ static int handle_write_with_hash(struct dedup_config *dc, struct bio *bio,
 				  u64 lbn, u8 *final_hash,
 				  struct hash_pbn_value hashpbn_value)
 {
+	printk(KERN_DEBUG "handle_write_with_hash\n");
+	
 	int r;
 	u32 vsize;
 	struct lbn_pbn_value lbnpbn_value;
@@ -540,6 +561,7 @@ static int handle_write_with_hash(struct dedup_config *dc, struct bio *bio,
  */
 static int handle_write(struct dedup_config *dc, struct bio *bio)
 {
+	printk(KERN_DEBUG "handle_write\n");
 	u64 lbn;
 	u8 hash[MAX_DIGEST_SIZE];
 	struct hash_pbn_value hashpbn_value;
@@ -604,6 +626,7 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
  */
 static int handle_discard(struct dedup_config *dc, struct bio *bio)
 {
+	printk(KERN_DEBUG "handle_discard\n");
 	u64 lbn, pbn_val;
 	u32 vsize;
 	struct lbn_pbn_value lbnpbn_value;
@@ -682,6 +705,7 @@ out:
  */
 static void process_bio(struct dedup_config *dc, struct bio *bio)
 {
+	printk(KERN_DEBUG "process_bio\n");
 	int r;
 
 	if (bio->bi_opf & (REQ_PREFLUSH | REQ_FUA) && !bio_sectors(bio)) {
@@ -697,11 +721,11 @@ static void process_bio(struct dedup_config *dc, struct bio *bio)
 	}
 
 	switch (bio_data_dir(bio)) {
-	case READ:
-		r = handle_read(dc, bio);
-		break;
-	case WRITE:
-		r = handle_write(dc, bio);
+		case READ:
+			r = handle_read(dc, bio);
+			break;
+		case WRITE:
+			r = handle_write(dc, bio);
 	}
 
 	if (r < 0) {
@@ -727,15 +751,20 @@ static void process_bio(struct dedup_config *dc, struct bio *bio)
 	}
 }
 
+
+
 /*
  * Main function for all work pool threads that process the block io
  * operation.
  */
 static void do_work(struct work_struct *ws)
 {
+	printk(KERN_DEBUG "do_work\n");
 	struct dedup_work *data = container_of(ws, struct dedup_work, worker);
 	struct dedup_config *dc = (struct dedup_config *)data->config;
 	struct bio *bio = (struct bio *)data->bio;
+
+	observe_bio(bio);
 
 	mempool_free(data, dc->dedup_work_pool);
 
@@ -748,6 +777,7 @@ static void do_work(struct work_struct *ws)
  */
 static void dedup_defer_bio(struct dedup_config *dc, struct bio *bio)
 {
+	printk(KERN_DEBUG "dedup_defer_bio\n");
 	struct dedup_work *data;
 
 	data = mempool_alloc(dc->dedup_work_pool, GFP_NOIO);
@@ -772,6 +802,7 @@ static void dedup_defer_bio(struct dedup_config *dc, struct bio *bio)
  */
 static int dm_dedup_map(struct dm_target *ti, struct bio *bio)
 {
+	printk(KERN_DEBUG "dm_dedup_map\n");
 	dedup_defer_bio(ti->private, bio);
 
 	return DM_MAPIO_SUBMITTED;
@@ -806,6 +837,7 @@ struct dedup_args {
 static int parse_meta_dev(struct dedup_args *da, struct dm_arg_set *as,
 			  char **err)
 {
+	printk(KERN_DEBUG "parse_meta_dev\n");
 	int r;
 
 	r = dm_get_device(da->ti, dm_shift_arg(as),
@@ -825,6 +857,7 @@ static int parse_meta_dev(struct dedup_args *da, struct dm_arg_set *as,
 static int parse_data_dev(struct dedup_args *da, struct dm_arg_set *as,
 			  char **err)
 {
+	printk(KERN_DEBUG "parse_data_dev\n");
 	int r;
 
 	r = dm_get_device(da->ti, dm_shift_arg(as),
@@ -846,6 +879,7 @@ static int parse_data_dev(struct dedup_args *da, struct dm_arg_set *as,
 static int parse_block_size(struct dedup_args *da, struct dm_arg_set *as,
 			    char **err)
 {
+	printk(KERN_DEBUG "parse_block_size\n");
 	u32 block_size;
 
 	if (kstrtou32(dm_shift_arg(as), 10, &block_size) ||
@@ -876,6 +910,7 @@ static int parse_block_size(struct dedup_args *da, struct dm_arg_set *as,
 static int parse_hash_algo(struct dedup_args *da, struct dm_arg_set *as,
 			   char **err)
 {
+	printk(KERN_DEBUG "parse_hash_algo\n");
 	strlcpy(da->hash_algo, dm_shift_arg(as), CRYPTO_ALG_NAME_LEN);
 
 	if (!crypto_has_alg(da->hash_algo, 0, CRYPTO_ALG_ASYNC)) {
@@ -895,6 +930,7 @@ static int parse_hash_algo(struct dedup_args *da, struct dm_arg_set *as,
 static int parse_backend(struct dedup_args *da, struct dm_arg_set *as,
 			 char **err)
 {
+	printk(KERN_DEBUG "parse_backend\n");
 	char backend[MAX_BACKEND_NAME_LEN];
 
 	strlcpy(backend, dm_shift_arg(as), MAX_BACKEND_NAME_LEN);
@@ -922,6 +958,7 @@ static int parse_backend(struct dedup_args *da, struct dm_arg_set *as,
 static int parse_flushrq(struct dedup_args *da, struct dm_arg_set *as,
 			 char **err)
 {
+	printk(KERN_DEBUG "parse_flushrq\n");
 	if (kstrtou32(dm_shift_arg(as), 10, &da->flushrq)) {
 		*err = "Invalid flushrq value";
 		return -EINVAL;
@@ -939,6 +976,7 @@ static int parse_flushrq(struct dedup_args *da, struct dm_arg_set *as,
 static int parse_corruption_flag(struct dedup_args *da, struct dm_arg_set *as,
 			 char **err)
 {
+	printk(KERN_DEBUG "parse_corruption_flag\n");
 	bool corruption_flag;
 
         if (kstrtobool(dm_shift_arg(as), &corruption_flag)) {
@@ -961,6 +999,7 @@ static int parse_corruption_flag(struct dedup_args *da, struct dm_arg_set *as,
 static int parse_dedup_args(struct dedup_args *da, int argc,
 			    char **argv, char **err)
 {
+	printk(KERN_DEBUG "parse_dedup_args\n");
 	struct dm_arg_set as;
 	int r;
 
@@ -1014,6 +1053,7 @@ static int parse_dedup_args(struct dedup_args *da, int argc,
  */
 static void destroy_dedup_args(struct dedup_args *da)
 {
+	printk(KERN_DEBUG "destroy_dedup_args\n");
 	if (da->meta_dev)
 		dm_put_device(da->ti, da->meta_dev);
 
@@ -1029,6 +1069,7 @@ static void destroy_dedup_args(struct dedup_args *da)
  */
 static int dm_dedup_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 {
+	printk(KERN_DEBUG "dm_dedup_ctr\n");
 	struct dedup_args da;
 	struct dedup_config *dc;
 	struct workqueue_struct *wq;
@@ -1246,6 +1287,7 @@ out:
 /* Dmdedup destructor. */
 static void dm_dedup_dtr(struct dm_target *ti)
 {
+	printk(KERN_DEBUG "dm_dedup_dtr\n");
 	struct dedup_config *dc = ti->private;
 	struct on_disk_stats data;
 	int ret;
@@ -1284,6 +1326,7 @@ static void dm_dedup_dtr(struct dm_target *ti)
 static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 			    unsigned int status_flags, char *result, unsigned int maxlen)
 {
+	printk(KERN_DEBUG "dm_dedup_status\n");
 	struct dedup_config *dc = ti->private;
 	u64 data_total_block_count;
 	u64 data_used_block_count;
@@ -1331,6 +1374,7 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 static int cleanup_hash_pbn(void *key, int32_t ksize, void *value,
 			    s32 vsize, void *data)
 {
+	printk(KERN_DEBUG "cleanup_hash_pbn\n");
 	int r = 0;
 	u64 pbn_val = 0;
 	struct hash_pbn_value hashpbn_value = *((struct hash_pbn_value *)value);
@@ -1373,6 +1417,7 @@ out:
  */
 static int garbage_collect(struct dedup_config *dc)
 {
+	printk(KERN_DEBUG "garbage_collect\n");
 	int err = 0;
 
 	BUG_ON(!dc);
@@ -1396,6 +1441,7 @@ static int dm_dedup_message(struct dm_target *ti,
 			    unsigned int argc, char **argv,
 			    char *result, unsigned maxlen)
 {
+	printk(KERN_DEBUG "dm_dedup_message\n");
 	int r = 0;
 
 	struct dedup_config *dc = ti->private;
@@ -1436,6 +1482,7 @@ static int dm_dedup_message(struct dm_target *ti,
 	return r;
 }
 
+// 定义时乱序赋值（C风格）
 static struct target_type dm_dedup_target = {
 	.name = "dedup",
 	.version = {1, 0, 0},
@@ -1449,11 +1496,13 @@ static struct target_type dm_dedup_target = {
 
 static int __init dm_dedup_init(void)
 {
+	printk(KERN_DEBUG "init dm_dedup-\n");
 	return dm_register_target(&dm_dedup_target);
 }
 
 static void __exit dm_dedup_exit(void)
 {
+	printk(KERN_DEBUG "exit dm_dedup-\n");
 	dm_unregister_target(&dm_dedup_target);
 }
 

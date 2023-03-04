@@ -29,6 +29,7 @@
 static sector_t compute_sector(struct bio *bio,
 			       struct dedup_config *dc)
 {
+	printk(KERN_DEBUG "compute_sector\n");
 	sector_t to_be_lbn;
 
 	to_be_lbn = bio->bi_iter.bi_sector;
@@ -47,6 +48,7 @@ static sector_t compute_sector(struct bio *bio,
 static int fetch_whole_block(struct dedup_config *dc,
 			     uint64_t pbn, struct page_list *pl)
 {
+	printk(KERN_DEBUG "fetch_whole_block\n");
 	struct dm_io_request iorq;
 	struct dm_io_region where;
 	unsigned long error_bits;
@@ -75,6 +77,7 @@ static int fetch_whole_block(struct dedup_config *dc,
 static int merge_data(struct dedup_config *dc, struct page *page,
 		      struct bio *bio)
 {
+	printk(KERN_DEBUG "merge_data\n");
 	sector_t bi_sector = bio->bi_iter.bi_sector;
 	void *src_page_vaddr, *dest_page_vaddr;
 	int position, err = 0;
@@ -107,6 +110,7 @@ out:
 
 static void copy_pages(struct page *src, struct bio *clone)
 {
+	printk(KERN_DEBUG "copy_pages\n");
 	void *src_page_vaddr, *dest_page_vaddr;
 
 	src_page_vaddr = page_address(src);
@@ -117,6 +121,7 @@ static void copy_pages(struct page *src, struct bio *clone)
 
 static void my_endio(struct bio *clone)
 {
+	printk(KERN_DEBUG "my_endio\n");
 	unsigned rw = bio_data_dir(clone);
 	struct bio *orig;
 	struct bio_vec *bv;
@@ -150,6 +155,7 @@ static void my_endio(struct bio *clone)
 static struct bio *create_bio(struct dedup_config *dc,
 			      struct bio *bio)
 {
+	printk(KERN_DEBUG "create_bio\n");
 	struct bio *clone;
 	struct page *page;
 
@@ -196,6 +202,7 @@ out:
 static struct bio *prepare_bio_with_pbn(struct dedup_config *dc,
 					struct bio *bio, uint64_t pbn)
 {
+	printk(KERN_DEBUG "prepare_bio_with_pbn\n");
 	int r = 0;
 	struct page_list *pl;
 	struct bio *clone = NULL;
@@ -243,6 +250,7 @@ out:
 static struct bio *prepare_bio_without_pbn(struct dedup_config *dc,
 					   struct bio *bio)
 {
+	printk(KERN_DEBUG "prepare_bio_without_pbn\n");
 	int r = 0;
 	struct bio *clone = NULL;
 
@@ -268,6 +276,7 @@ out:
  */
 struct bio *prepare_bio_on_write(struct dedup_config *dc, struct bio *bio)
 {
+	printk(KERN_DEBUG "prepare_bio_on_write\n");
 	int r;
 	sector_t lbn;
 	uint32_t vsize;
