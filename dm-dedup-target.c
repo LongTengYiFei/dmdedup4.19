@@ -466,6 +466,9 @@ static int __handle_has_lbn_pbn_with_hash(struct dedup_config *dc,
 	pbn_old = lbnpbn_value.pbn;
 
 	/* special case, overwrite same LBN/PBN with same data */
+	// 流程图最左边那条分支
+	// host向同一个LBN再次写入了相同的数据
+	// 这种行为比较常见，参考文献13
 	if (pbn_this == pbn_old)
 		goto out;
 
@@ -539,10 +542,12 @@ static int handle_write_with_hash(struct dedup_config *dc, struct bio *bio,
 
 	if (r == -ENODATA) {
 		/* No LBN->PBN mapping entry */
+		// 写入了相同的数据，但是这个LBN还没被映射到某个PBN。
 		r = __handle_no_lbn_pbn_with_hash(dc, bio, lbn, pbn_this,
 						  lbnpbn_value);
 	} else if (r == 0) {
 		/* LBN->PBN mapping entry exists */
+		// 写入了相同的数据，而且这个LBN已经被映射到某个PBN。
 		r = __handle_has_lbn_pbn_with_hash(dc, bio, lbn, pbn_this,
 						   lbnpbn_value);
 	}
@@ -590,22 +595,30 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 	if (r)
 		return r;
 
-	r = dc->kvs_hash_pbn->kvs_lookup(dc->kvs_hash_pbn, hash,
-					 dc->crypto_key_size,
-					 &hashpbn_value, &vsize);
+	// 访问元数据
+	r = dc->kvs_hash_pbn->kvs_lookup(dc->kvs_hash_pbn, hash, dc->crypto_key_size, &hashpbn_value, &vsize);
 
 	if (r == -ENODATA)
+		// non-duplicate
 		r = handle_write_no_hash(dc, bio, lbn, hash);
 	else if (r == 0)
-		r = handle_write_with_hash(dc, bio, lbn, hash,
-					   hashpbn_value);
+		// duplicate
+		// 数据已存在
+		r = handle_write_with_hash(dc, bio, lbn, hash, hashpbn_value);
 
 	if (r < 0)
 		return r;
 
 	dc->writes_after_flush++;
-	if ((dc->flushrq && dc->writes_after_flush >= dc->flushrq) ||
-	    (bio->bi_opf & (REQ_PREFLUSH | REQ_FUA))) {
+
+	if (dc->flushrq && dc->writes_after_flush >= dc->flushrq){
+		r = dc->mdops->flush_meta(dc->bmd);
+		if (r < 0)
+			return r;
+		dc->writes_after_flush = 0;
+	}
+
+	if ((bio->bi_opf & (REQ_PREFLUSH | REQ_FUA))){
 		r = dc->mdops->flush_meta(dc->bmd);
 		if (r < 0)
 			return r;
@@ -764,7 +777,7 @@ static void do_work(struct work_struct *ws)
 	struct dedup_config *dc = (struct dedup_config *)data->config;
 	struct bio *bio = (struct bio *)data->bio;
 
-	observe_bio(bio);
+	// observe_bio(bio);
 
 	mempool_free(data, dc->dedup_work_pool);
 
@@ -1336,6 +1349,7 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 
 	switch (status_type) {
 	case STATUSTYPE_INFO:
+		printk(KERN_DEBUG "status info\n");
 		data_used_block_count = dc->physical_block_counter;
 		data_actual_block_count = dc->logical_block_counter;
 		data_total_block_count = dc->pblocks;
@@ -1359,6 +1373,7 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 			dc->reads_on_writes, dc->overwrites, dc->newwrites, dc->gc_counter);
 		break;
 	case STATUSTYPE_TABLE:
+		printk(KERN_DEBUG "status table\n");
 		DMEMIT("%s %s %u %s %s %u",
 		       dc->metadata_dev->name, dc->data_dev->name, dc->block_size,
 			dc->crypto_alg, dc->backend_str, dc->flushrq);
