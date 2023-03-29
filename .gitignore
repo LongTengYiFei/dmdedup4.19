@@ -7,4 +7,4 @@ modules.order
 .tmp_versions/
 
 .vscode/
-test/
+trace/

@@ -3,6 +3,7 @@ make
 
 # 拷贝至内核目录
 cp ./dm-dedup.ko /lib/modules/4.19.100/kernel/drivers/md/
+# make modules_install
 
 # 依赖探测 
 depmod
