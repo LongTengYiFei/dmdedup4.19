@@ -105,6 +105,13 @@ struct dedup_config {
 	long time_hash_pbn_ns;			//figure 2的黄色菱形hash pbn元数据查询时间，单位纳秒。
 	long time_left_lbn_pbn_ns;		//figure 2左边的蓝色菱形LBN mapping元数据查询时间，单位纳秒。
 	long time_right_lbn_pbn_ns;		//figure 2右边的蓝色菱形LBN mapping元数据查询时间，单位纳秒。
+
+	//figure2 五条数据走向数量
+	int data_flow_left1;
+	int data_flow_left2;
+	int data_flow_mid;
+	int data_flow_right2;
+	int data_flow_right1;
 };
 
 /* Value of the HASH-PBN key-value store */

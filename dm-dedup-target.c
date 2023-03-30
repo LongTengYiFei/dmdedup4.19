@@ -65,10 +65,10 @@
 // # define SWITCH_destroy_dedup_args
 // # define SWITCH_dm_dedup_ctr
 // # define SWITCH_dm_dedup_dtr
-// # define SWITCH_dm_dedup_status
+# define SWITCH_dm_dedup_status
 // # define SWITCH_cleanup_hash_pbn
 // # define SWITCH_garbage_collect
-// # define SWITCH_dm_dedup_message
+# define SWITCH_dm_dedup_message
 // # define SWITCH_dm_dedup_init
 // # define SWITCH_dm_dedup_exit
 
@@ -455,9 +455,11 @@ static int handle_write_no_hash(struct dedup_config *dc,
 	if (r == -ENODATA) {
 		/* No LBN->PBN mapping entry */
 		r = __handle_no_lbn_pbn(dc, bio, lbn, hash);
+		dc->data_flow_right1++;
 	} else if (r == 0) {
 		/* LBN->PBN mappings exist */
 		r = __handle_has_lbn_pbn(dc, bio, lbn, hash, lbnpbn_value.pbn);
+		dc->data_flow_right2++;
 	}
 	if (r == 0)
 		dc->uniqwrites++;
@@ -536,8 +538,12 @@ static int __handle_has_lbn_pbn_with_hash(struct dedup_config *dc,
 	// 流程图最左边那条分支
 	// host向同一个LBN再次写入了相同的数据
 	// 这种行为比较常见，参考文献13
-	if (pbn_this == pbn_old)
+	if (pbn_this == pbn_old){
+		dc->data_flow_left1++;
 		goto out;
+	}
+
+	dc->data_flow_left2++;
 
 	/* Increments refcount of this passed pbn */
 	r = dc->mdops->inc_refcount(dc->bmd, pbn_this);
@@ -614,13 +620,12 @@ static int handle_write_with_hash(struct dedup_config *dc, struct bio *bio,
 	if (r == -ENODATA) {
 		/* No LBN->PBN mapping entry */
 		// 写入了相同的数据，但是这个LBN还没被映射到某个PBN。
-		r = __handle_no_lbn_pbn_with_hash(dc, bio, lbn, pbn_this,
-						  lbnpbn_value);
+		r = __handle_no_lbn_pbn_with_hash(dc, bio, lbn, pbn_this, lbnpbn_value);
+		dc->data_flow_mid++; 
 	} else if (r == 0) {
 		/* LBN->PBN mapping entry exists */
 		// 写入了相同的数据，而且这个LBN已经被映射到某个PBN。
-		r = __handle_has_lbn_pbn_with_hash(dc, bio, lbn, pbn_this,
-						   lbnpbn_value);
+		r = __handle_has_lbn_pbn_with_hash(dc, bio, lbn, pbn_this, lbnpbn_value);
 	}
 	if (r == 0)
 		dc->dupwrites++;
@@ -672,13 +677,13 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 		figure 2 黄色菱形 hash index
 		HASH->PBN
 	*/
-	struct timespec  tv_start;
-	struct timespec  tv_end;
-	getnstimeofday(&tv_start);
+	// struct timespec  tv_start;
+	// struct timespec  tv_end;
+	// getnstimeofday(&tv_start);
 	r = dc->kvs_hash_pbn->kvs_lookup(dc->kvs_hash_pbn, hash, dc->crypto_key_size, &hashpbn_value, &vsize);
-	getnstimeofday(&tv_end);
-	long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
-	dc->time_hash_pbn_ns += elapse;
+	// getnstimeofday(&tv_end);
+	// long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
+	// dc->time_hash_pbn_ns += elapse;
 
 	if (r == -ENODATA)
 		// Not found hash / non-duplicate / figure2右边蓝色菱形
@@ -1378,8 +1383,15 @@ static int dm_dedup_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	dc->flushrq = da.flushrq;
 	dc->writes_after_flush = 0;
 
-	// 项目新增的变量
+	// 锋哥项目新增的变量
 	dc->time_hash_pbn_ns = 0;
+	dc->time_left_lbn_pbn_ns = 0;
+	dc->time_right_lbn_pbn_ns = 0;
+	dc->data_flow_left1 = 0;
+	dc->data_flow_left2 = 0;
+	dc->data_flow_mid = 0;
+	dc->data_flow_right2 = 0;
+	dc->data_flow_right1 = 0;
 
 	r = dm_set_target_max_io_len(ti, dc->sectors_per_block);
 	if (r)
@@ -1457,7 +1469,7 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 			    unsigned int status_flags, char *result, unsigned int maxlen)
 {
 	# ifdef SWITCH_dm_dedup_status
-	printk(KERN_DEBUG "dm_dedup_status\n");
+	printk(KERN_DEBUG "dm_dedup_status, status is %d\n", status_type);
 	# endif
 	struct dedup_config *dc = ti->private;
 	u64 data_total_block_count;
@@ -1467,6 +1479,7 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 	int sz = 0;
 
 	switch (status_type) {
+	// dmsetup status [device_name]
 	case STATUSTYPE_INFO:
 		printk(KERN_DEBUG "status info\n");
 		data_used_block_count = dc->physical_block_counter;
@@ -1476,9 +1489,14 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 		data_free_block_count =
 			data_total_block_count - data_used_block_count;
 
-		DMEMIT("%llu %llu %llu %llu ",
+		DMEMIT("<flow l1> %d, <flow l2> %d, <flow mid> %d, <flow r2> %d, <flow r1> %d, ",
+		       dc->data_flow_left1, dc->data_flow_left2,
+			   dc->data_flow_mid,
+			   dc->data_flow_right2, dc->data_flow_right1);
+
+		DMEMIT("<total block count>%llu, <free block count>%llu, <used block count>%llu, <actual block count>%llu, ",
 		       data_total_block_count, data_free_block_count,
-			data_used_block_count, data_actual_block_count);
+			   data_used_block_count, data_actual_block_count);
 
 		DMEMIT("%d %d:%d %d:%d ",
 		       dc->block_size,
@@ -1492,6 +1510,7 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 			dc->reads_on_writes, dc->overwrites, dc->newwrites, dc->gc_counter);
 		break;
 	case STATUSTYPE_TABLE:
+	// dmsetup table [device_name]
 		printk(KERN_DEBUG "status table\n");
 		DMEMIT("%s %s %u %s %s %u",
 		       dc->metadata_dev->name, dc->data_dev->name, dc->block_size,
@@ -1580,7 +1599,7 @@ static int dm_dedup_message(struct dm_target *ti,
 			    char *result, unsigned maxlen)
 {
 	# ifdef SWITCH_dm_dedup_message
-	printk(KERN_DEBUG "dm_dedup_message\n"); 
+	printk(KERN_DEBUG "dm_dedup_message, the message:%s\n", argv[0]); 
 	# endif
 	int r = 0;
 
@@ -1615,7 +1634,13 @@ static int dm_dedup_message(struct dm_target *ti,
                 } else {
                         r = -EINVAL;
                 }
-	} else {
+	} else if (!strcasecmp(argv[0], "clear_data_flow")){
+		dc->data_flow_left1 = 0;
+		dc->data_flow_left2 = 0;
+		dc->data_flow_mid = 0;
+		dc->data_flow_right2 = 0;
+		dc->data_flow_right1 = 0;
+	}else {
 		r = -EINVAL;
 	}
 
