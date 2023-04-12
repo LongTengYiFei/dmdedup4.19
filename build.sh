@@ -21,3 +21,9 @@ dd if=/dev/zero of=$META_DEV bs=4096 count=1
 # 前面三个参数什么意思
 echo "0 $TARGET_SIZE dedup $META_DEV $DATA_DEV 4096 md5 cowbtree 100 0" | dmsetup create mydedup
 
+# # mkfs mount
+# mkfs.ext4 /dev/mapper/mydedup
+# mount /dev/mapper/mydedup /mnt/test
+
+# # 建立测试文件
+# touch /mnt/test/testfile
