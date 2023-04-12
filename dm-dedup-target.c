@@ -668,6 +668,7 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 	}
 
 	lbn = bio_lbn(dc, bio);
+	printk(KERN_DEBUG "handle write LBN 0x%x\n", lbn);
 
 	r = compute_hash_bio(dc->desc_table, bio, hash);
 	if (r)
