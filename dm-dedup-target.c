@@ -49,7 +49,7 @@
 // # define SWITCH___handle_no_lbn_pbn_with_hash
 // # define SWITCH___handle_has_lbn_pbn_with_hash
 // # define SWITCH_handle_write_with_hash
-# define SWITCH_handle_write
+// # define SWITCH_handle_write
 // # define SWITCH_handle_discard
 // # define SWITCH_process_bio
 // # define SWITCH_do_work
@@ -65,10 +65,10 @@
 // # define SWITCH_destroy_dedup_args
 // # define SWITCH_dm_dedup_ctr
 // # define SWITCH_dm_dedup_dtr
-# define SWITCH_dm_dedup_status
+// # define SWITCH_dm_dedup_status
 // # define SWITCH_cleanup_hash_pbn
 // # define SWITCH_garbage_collect
-# define SWITCH_dm_dedup_message
+// # define SWITCH_dm_dedup_message
 // # define SWITCH_dm_dedup_init
 // # define SWITCH_dm_dedup_exit
 
@@ -93,9 +93,9 @@ enum backend {
 };
 
 void observe_bio(struct bio* bio){
-	printk(KERN_DEBUG "observe_bio start\n");
-	printk(KERN_DEBUG "bio vec num = %d\n", bio->bi_vcnt);
-	printk(KERN_DEBUG "observe_bio end\n");
+	//printk(KERN_DEBUG "observe_bio start\n");
+	//printk(KERN_DEBUG "bio vec num = %d\n", bio->bi_vcnt);
+	//printk(KERN_DEBUG "observe_bio end\n");
 }
 
 /* Initializes bio. */
@@ -449,9 +449,16 @@ static int handle_write_no_hash(struct dedup_config *dc,
 	struct lbn_pbn_value lbnpbn_value;
 
 	// figure2右蓝色菱形
+	struct timespec  tv_start;
+	struct timespec  tv_end;
+	getnstimeofday(&tv_start);
 	r = dc->kvs_lbn_pbn->kvs_lookup(dc->kvs_lbn_pbn, (void *)&lbn,
 					sizeof(lbn), (void *)&lbnpbn_value,
 					&vsize);
+	getnstimeofday(&tv_end);
+	long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
+	dc->time_right_lbn_pbn_ns += elapse;
+
 	if (r == -ENODATA) {
 		/* No LBN->PBN mapping entry */
 		r = __handle_no_lbn_pbn(dc, bio, lbn, hash);
@@ -678,13 +685,13 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 		figure 2 黄色菱形 hash index
 		HASH->PBN
 	*/
-	// struct timespec  tv_start;
-	// struct timespec  tv_end;
-	// getnstimeofday(&tv_start);
+	struct timespec  tv_start;
+	struct timespec  tv_end;
+	getnstimeofday(&tv_start);
 	r = dc->kvs_hash_pbn->kvs_lookup(dc->kvs_hash_pbn, hash, dc->crypto_key_size, &hashpbn_value, &vsize);
-	// getnstimeofday(&tv_end);
-	// long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
-	// dc->time_hash_pbn_ns += elapse;
+	getnstimeofday(&tv_end);
+	long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
+	dc->time_hash_pbn_ns += elapse;
 
 	if (r == -ENODATA)
 		// Not found hash / non-duplicate / figure2右边蓝色菱形
@@ -1384,10 +1391,17 @@ static int dm_dedup_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	dc->flushrq = da.flushrq;
 	dc->writes_after_flush = 0;
 
-	// 锋哥项目新增的变量
+	// 元数据查询时间
 	dc->time_hash_pbn_ns = 0;
 	dc->time_left_lbn_pbn_ns = 0;
 	dc->time_right_lbn_pbn_ns = 0;
+
+	// 元数据更新时间
+	dc->time_mid_add_lbn_pbn_ns = 0;
+	dc->time_right_add_hash_pbn_ns = 0;
+	dc->time_right_add_lbn_pbn_ns = 0;
+
+	// 数据流向
 	dc->data_flow_left1 = 0;
 	dc->data_flow_left2 = 0;
 	dc->data_flow_mid = 0;
@@ -1494,6 +1508,19 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 		       dc->data_flow_left1, dc->data_flow_left2,
 			   dc->data_flow_mid,
 			   dc->data_flow_right2, dc->data_flow_right1);
+		
+		// 元数据更新时间
+		DMEMIT("%ld", dc->time_mid_add_lbn_pbn_ns);
+		DMEMIT("%ld", dc->time_mid_add_lbn_pbn_ns);
+		DMEMIT("%ld", dc->time_mid_add_lbn_pbn_ns);
+
+		// 总元数据访问时间
+		long total_meta_time = dc->time_mid_add_lbn_pbn_ns + \
+		dc->time_right_add_hash_pbn_ns + \
+		dc->time_right_add_lbn_pbn_ns + \
+		dc->time_hash_pbn_ns + \
+		dc->time_left_lbn_pbn_ns + \
+		dc->time_mid_add_lbn_pbn_ns;
 
 		DMEMIT("<total block count>%llu, <free block count>%llu, <used block count>%llu, <actual block count>%llu, ",
 		       data_total_block_count, data_free_block_count,

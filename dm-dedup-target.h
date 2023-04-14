@@ -102,9 +102,15 @@ struct dedup_config {
 	mempool_t *dedup_work_pool;	/* Dedup work pool */
 	mempool_t *check_work_pool;	/* Corruption check work pool */
 
+	// 元数据查询时间
 	long time_hash_pbn_ns;			//figure 2的黄色菱形hash pbn元数据查询时间，单位纳秒。
 	long time_left_lbn_pbn_ns;		//figure 2左边的蓝色菱形LBN mapping元数据查询时间，单位纳秒。
 	long time_right_lbn_pbn_ns;		//figure 2右边的蓝色菱形LBN mapping元数据查询时间，单位纳秒。
+
+	// 元数据更新时间
+	long time_mid_add_lbn_pbn_ns;
+	long time_right_add_lbn_pbn_ns;
+	long time_right_add_hash_pbn_ns;
 
 	//figure2 五条数据走向数量
 	int data_flow_left1;

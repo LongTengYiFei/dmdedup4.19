@@ -12,8 +12,8 @@ depmod
 modprobe dm-dedup
 
 # 建立device mapper
-META_DEV=/dev/sdb
-DATA_DEV=/dev/sdc
+META_DEV=/dev/sda1
+DATA_DEV=/dev/sda2
 DATA_DEV_SIZE=`blockdev --getsz $DATA_DEV`
 TARGET_SIZE=`expr $DATA_DEV_SIZE \* 12 / 10`
 dd if=/dev/zero of=$META_DEV bs=4096 count=1
