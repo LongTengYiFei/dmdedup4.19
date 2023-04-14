@@ -283,9 +283,16 @@ static int alloc_pbnblk_and_insert_lbn_pbn(struct dedup_config *dc,
 	lbnpbn_value.pbn = *pbn_new;
 	do_io(dc, bio, *pbn_new);
 
+	struct timespec  tv_start;
+	struct timespec  tv_end;
+	getnstimeofday(&tv_start);
 	r = dc->kvs_lbn_pbn->kvs_insert(dc->kvs_lbn_pbn, (void *)&lbn,
 					sizeof(lbn), (void *)&lbnpbn_value,
 					sizeof(lbnpbn_value));
+	getnstimeofday(&tv_end);
+	long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
+	dc->time_right_add_lbn_pbn_ns += elapse;
+	
 	if (r < 0)
 		dc->mdops->dec_refcount(dc->bmd, *pbn_new);
 
@@ -318,10 +325,18 @@ static int __handle_no_lbn_pbn(struct dedup_config *dc,
 
 	/* Inserts new hash-pbn mapping for given hash. */
 	hashpbn_value.pbn = pbn_new;
+
+	struct timespec  tv_start;
+	struct timespec  tv_end;
+	getnstimeofday(&tv_start);
 	r = dc->kvs_hash_pbn->kvs_insert(dc->kvs_hash_pbn, (void *)hash,
 					 dc->crypto_key_size,
 					 (void *)&hashpbn_value,
 					 sizeof(hashpbn_value));
+	getnstimeofday(&tv_end);
+	long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
+	dc->time_right_add_hash_pbn_ns += elapse;
+
 	if (r < 0)
 		goto kvs_insert_err;
 
@@ -382,10 +397,18 @@ static int __handle_has_lbn_pbn(struct dedup_config *dc,
 
 	/* Inserts new hash-pbn entry for given hash. */
 	hashpbn_value.pbn = pbn_new;
+
+	struct timespec  tv_start;
+	struct timespec  tv_end;
+	getnstimeofday(&tv_start);
 	r = dc->kvs_hash_pbn->kvs_insert(dc->kvs_hash_pbn, (void *)hash,
 					 dc->crypto_key_size,
 					 (void *)&hashpbn_value,
 					 sizeof(hashpbn_value));
+	getnstimeofday(&tv_end);
+	long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
+	dc->time_right_add_hash_pbn_ns += elapse;
+
 	if (r < 0)
 		goto kvs_insert_err;
 
@@ -498,9 +521,16 @@ static int __handle_no_lbn_pbn_with_hash(struct dedup_config *dc,
 	lbnpbn_value.pbn = pbn_this;
 
 	/* Insert lbn->pbn_this entry */
+	struct timespec  tv_start;
+	struct timespec  tv_end;
+	getnstimeofday(&tv_start);
 	r = dc->kvs_lbn_pbn->kvs_insert(dc->kvs_lbn_pbn, (void *)&lbn,
 					sizeof(lbn), (void *)&lbnpbn_value,
 					sizeof(lbnpbn_value));
+	getnstimeofday(&tv_end);
+	long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
+	dc->time_mid_add_lbn_pbn_ns += elapse;
+
 	if (r < 0)
 		goto kvs_insert_error;
 
@@ -560,10 +590,16 @@ static int __handle_has_lbn_pbn_with_hash(struct dedup_config *dc,
 	this_lbnpbn_value.pbn = pbn_this;
 
 	/* Insert lbn->pbn_this entry */
+	struct timespec  tv_start;
+	struct timespec  tv_end;
+	getnstimeofday(&tv_start);
 	r = dc->kvs_lbn_pbn->kvs_insert(dc->kvs_lbn_pbn, (void *)&lbn,
-					sizeof(lbn),
-					(void *)&this_lbnpbn_value,
+					sizeof(lbn), (void *)&this_lbnpbn_value,
 					sizeof(this_lbnpbn_value));
+	getnstimeofday(&tv_end);
+	long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
+	dc->time_mid_add_lbn_pbn_ns += elapse;
+
 	if (r < 0)
 		goto kvs_insert_err;
 
@@ -621,8 +657,14 @@ static int handle_write_with_hash(struct dedup_config *dc, struct bio *bio,
 	pbn_this = hashpbn_value.pbn;
 
 	// figure2左蓝色菱形
+	struct timespec  tv_start;
+	struct timespec  tv_end;
+	getnstimeofday(&tv_start);
 	r = dc->kvs_lbn_pbn->kvs_lookup(dc->kvs_lbn_pbn, (void *)&lbn,
 					sizeof(lbn), (void *)&lbnpbn_value, &vsize);
+	getnstimeofday(&tv_end);
+	long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
+	dc->time_left_lbn_pbn_ns += elapse;
 
 	if (r == -ENODATA) {
 		/* No LBN->PBN mapping entry */
@@ -1509,10 +1551,15 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 			   dc->data_flow_mid,
 			   dc->data_flow_right2, dc->data_flow_right1);
 		
+		// 元数据查询时间
+		DMEMIT("time_hash_pbn_ns %ld, ", dc->time_hash_pbn_ns);
+		DMEMIT("time_left_lbn_pbn_ns %ld, ", dc->time_left_lbn_pbn_ns);
+		DMEMIT("time_right_lbn_pbn_ns %ld, ", dc->time_right_lbn_pbn_ns);
+
 		// 元数据更新时间
-		DMEMIT("%ld", dc->time_mid_add_lbn_pbn_ns);
-		DMEMIT("%ld", dc->time_mid_add_lbn_pbn_ns);
-		DMEMIT("%ld", dc->time_mid_add_lbn_pbn_ns);
+		DMEMIT("time_mid_add_lbn_pbn_ns %ld, ", dc->time_mid_add_lbn_pbn_ns);
+		DMEMIT("time_right_add_hash_pbn_ns %ld, ", dc->time_right_add_hash_pbn_ns);
+		DMEMIT("time_right_add_lbn_pbn_ns %ld, ", dc->time_right_add_lbn_pbn_ns);
 
 		// 总元数据访问时间
 		long total_meta_time = dc->time_mid_add_lbn_pbn_ns + \
@@ -1521,6 +1568,7 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 		dc->time_hash_pbn_ns + \
 		dc->time_left_lbn_pbn_ns + \
 		dc->time_mid_add_lbn_pbn_ns;
+		DMEMIT("TOTAL METADATA ACCESS TIME ns %ld, ", total_meta_time)
 
 		DMEMIT("<total block count>%llu, <free block count>%llu, <used block count>%llu, <actual block count>%llu, ",
 		       data_total_block_count, data_free_block_count,
