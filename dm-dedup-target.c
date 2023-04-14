@@ -530,6 +530,7 @@ static int __handle_no_lbn_pbn_with_hash(struct dedup_config *dc,
 	getnstimeofday(&tv_end);
 	long elapse = (tv_end.tv_sec - tv_start.tv_sec) * 1000000000 + (tv_end.tv_nsec - tv_start.tv_nsec);
 	dc->time_mid_add_lbn_pbn_ns += elapse;
+	printk(KERN_DEBUG "LBN PBN insert time %ld\n", elapse);
 
 	if (r < 0)
 		goto kvs_insert_error;
@@ -717,7 +718,7 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 	}
 
 	lbn = bio_lbn(dc, bio);
-	printk(KERN_DEBUG "handle write LBN 0x%x\n", lbn);
+	// printk(KERN_DEBUG "handle write LBN 0x%x\n", lbn);
 
 	r = compute_hash_bio(dc->desc_table, bio, hash);
 	if (r)
