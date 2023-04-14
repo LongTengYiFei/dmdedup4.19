@@ -1568,7 +1568,7 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 		dc->time_hash_pbn_ns + \
 		dc->time_left_lbn_pbn_ns + \
 		dc->time_mid_add_lbn_pbn_ns;
-		DMEMIT("TOTAL METADATA ACCESS TIME ns %ld, ", total_meta_time)
+		DMEMIT("TOTAL METADATA ACCESS TIME ns %ld, ", total_meta_time);
 
 		DMEMIT("<total block count>%llu, <free block count>%llu, <used block count>%llu, <actual block count>%llu, ",
 		       data_total_block_count, data_free_block_count,
