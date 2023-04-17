@@ -33,6 +33,13 @@
 #include <linux/blk_types.h>
 #include <linux/mempool.h>
 
+#include <linux/fs.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/uaccess.h>
+#include <asm/fpu/api.h>
+
 #include <linux/scatterlist.h>
 #include <asm/page.h>
 #include <asm/unaligned.h>
@@ -111,13 +118,23 @@ struct dedup_config {
 	long time_mid_add_lbn_pbn_ns;
 	long time_right_add_lbn_pbn_ns;
 	long time_right_add_hash_pbn_ns;
-
+	
+	// CADedup 划分的时间
+	long time_hash_ns;
+	long time_generate_io_ns;
+	long time_flush_meta_ns;
+	long time_update_meta_ns;
+	
 	//figure2 五条数据走向数量
 	int data_flow_left1;
 	int data_flow_left2;
 	int data_flow_mid;
 	int data_flow_right2;
 	int data_flow_right1;
+
+	// 观察lbn-pbn映射用的文件
+	struct file * file_lbn_pbn;
+	mm_segment_t old_fs;
 };
 
 /* Value of the HASH-PBN key-value store */

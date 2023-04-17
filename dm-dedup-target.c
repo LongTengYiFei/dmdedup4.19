@@ -197,6 +197,11 @@ static int handle_read(struct dedup_config *dc, struct bio *bio)
 		io->lbn = lbn;
 		io->base_bio = bio;
 
+		// 保存映射关系
+		char buf[128]={0};
+		int len = sprintf(buf, "lbn:%lld, pbn:%lld\n", io->lbn, io->pbn);
+		kernel_write(dc->file_lbn_pbn, buf, len, &dc->file_lbn_pbn->f_pos); 
+		
 		/*
 		 * Prepare bio clone to handle disk read
 		 * clone is created so that we can have our own endio
@@ -281,7 +286,13 @@ static int alloc_pbnblk_and_insert_lbn_pbn(struct dedup_config *dc,
 	}
 
 	lbnpbn_value.pbn = *pbn_new;
+	struct timespec  tv_start3;
+	struct timespec  tv_end3;
+	getnstimeofday(&tv_start3);
 	do_io(dc, bio, *pbn_new);
+	getnstimeofday(&tv_end3);
+	long elapse3 = (tv_end3.tv_sec - tv_start3.tv_sec) * 1000000000 + (tv_end3.tv_nsec - tv_start3.tv_nsec);
+	dc->time_generate_io_ns += elapse3;
 
 	struct timespec  tv_start;
 	struct timespec  tv_end;
@@ -720,7 +731,14 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 	lbn = bio_lbn(dc, bio);
 	// printk(KERN_DEBUG "handle write LBN 0x%x\n", lbn);
 
+	struct timespec  tv_start1;
+	struct timespec  tv_end1;
+	getnstimeofday(&tv_start1);
 	r = compute_hash_bio(dc->desc_table, bio, hash);
+	getnstimeofday(&tv_end1);
+	long elapse1 = (tv_end1.tv_sec - tv_start1.tv_sec) * 1000000000 + (tv_end1.tv_nsec - tv_start1.tv_nsec);
+	dc->time_hash_ns += elapse1;
+
 	if (r)
 		return r;
 
@@ -748,15 +766,27 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 
 	dc->writes_after_flush++;
 
+	struct timespec  tv_start2;
+	struct timespec  tv_end2;
 	if (dc->flushrq && dc->writes_after_flush >= dc->flushrq){
+		getnstimeofday(&tv_start2);
 		r = dc->mdops->flush_meta(dc->bmd);
+		getnstimeofday(&tv_end2);
+		long elapse2 = (tv_end2.tv_sec - tv_start2.tv_sec) * 1000000000 + (tv_end2.tv_nsec - tv_start2.tv_nsec);
+		dc->time_flush_meta_ns += elapse2;
+
 		if (r < 0)
 			return r;
 		dc->writes_after_flush = 0;
 	}
 
 	if ((bio->bi_opf & (REQ_PREFLUSH | REQ_FUA))){
+		getnstimeofday(&tv_start2);
 		r = dc->mdops->flush_meta(dc->bmd);
+		getnstimeofday(&tv_end2);
+		long elapse = (tv_end2.tv_sec - tv_start2.tv_sec) * 1000000000 + (tv_end2.tv_nsec - tv_start2.tv_nsec);
+		dc->time_flush_meta_ns += elapse;		
+		
 		if (r < 0)
 			return r;
 		dc->writes_after_flush = 0;
@@ -861,9 +891,16 @@ static void process_bio(struct dedup_config *dc, struct bio *bio)
 	printk(KERN_DEBUG "process_bio\n");
 	# endif
 	int r;
-
+	
+	struct timespec  tv_start2;
+	struct timespec  tv_end2;
 	if (bio->bi_opf & (REQ_PREFLUSH | REQ_FUA) && !bio_sectors(bio)) {
+		getnstimeofday(&tv_start2);
 		r = dc->mdops->flush_meta(dc->bmd);
+		getnstimeofday(&tv_end2);
+		long elapse = (tv_end2.tv_sec - tv_start2.tv_sec) * 1000000000 + (tv_end2.tv_nsec - tv_start2.tv_nsec);
+		dc->time_flush_meta_ns += elapse;	
+
 		if (r == 0)
 			dc->writes_after_flush = 0;
 		do_io_remap_device(dc, bio);
@@ -1451,6 +1488,23 @@ static int dm_dedup_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	dc->data_flow_right2 = 0;
 	dc->data_flow_right1 = 0;
 
+	// CADedup划分的时间
+	dc->time_hash_ns = 0;
+	dc->time_generate_io_ns = 0;
+	dc->time_flush_meta_ns = 0;
+	dc->time_update_meta_ns = 0;
+
+	// lbn-pbn映射存储文件
+	char *filename = "/home/cyf/data/lbn_pbn";
+	dc->file_lbn_pbn = filp_open(filename, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+	if (IS_ERR(dc->file_lbn_pbn)) {
+        printk(KERN_ERR "Failed to open file %s\n", filename);
+        return PTR_ERR(dc->file_lbn_pbn);
+    }
+	dc->old_fs = get_fs();
+	set_fs(get_ds());
+
+
 	r = dm_set_target_max_io_len(ti, dc->sectors_per_block);
 	if (r)
 		goto bad_kvstore_init;
@@ -1519,6 +1573,10 @@ static void dm_dedup_dtr(struct dm_target *ti)
 	dm_put_device(ti, dc->metadata_dev);
 	desc_table_deinit(dc->desc_table);
 
+	// 结束lbn-pbn映射文件使用
+    set_fs(dc->old_fs);
+    filp_close(dc->file_lbn_pbn, NULL);
+
 	kfree(dc);
 }
 
@@ -1570,6 +1628,11 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 		dc->time_left_lbn_pbn_ns + \
 		dc->time_mid_add_lbn_pbn_ns;
 		DMEMIT("TOTAL METADATA ACCESS TIME ns %ld, ", total_meta_time);
+
+		// CADedup统计
+		DMEMIT("time_hash_ns %ld, ", dc->time_hash_ns);
+		DMEMIT("time_flush_meta_ns %ld, ", dc->time_flush_meta_ns);
+		DMEMIT("time_generate_io_ns %ld, ", dc->time_generate_io_ns);
 
 		DMEMIT("<total block count>%llu, <free block count>%llu, <used block count>%llu, <actual block count>%llu, ",
 		       data_total_block_count, data_free_block_count,
