@@ -730,6 +730,15 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 	struct timespec  tv_end1;
 	getnstimeofday(&tv_start1);
 	r = compute_hash_bio(dc->desc_table, bio, hash);
+	printk(KERN_DEBUG "handle write hash %x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x\n", 
+	hash[0], hash[1], hash[2], hash[3], 
+	hash[4], hash[5], hash[6], hash[7], 
+	hash[8], hash[9], hash[10], hash[11],
+	hash[12], hash[13], hash[14], hash[15], 
+	hash[16], hash[17], hash[18], hash[19], 
+	hash[20], hash[21], hash[22], hash[23],
+	hash[24], hash[25], hash[26], hash[27], 
+	hash[28], hash[29], hash[30], hash[31]);
 	getnstimeofday(&tv_end1);
 	long elapse1 = (tv_end1.tv_sec - tv_start1.tv_sec) * 1000000000 + (tv_end1.tv_nsec - tv_start1.tv_nsec);
 	dc->time_hash_ns += elapse1;
@@ -1617,6 +1626,9 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 		DMEMIT("<total block count>%llu, <free block count>%llu, <used block count>%llu, <actual block count>%llu, ",
 		       data_total_block_count, data_free_block_count,
 			   data_used_block_count, data_actual_block_count);
+
+		// 重删率
+		DMEMIT("<total writes>%llu, <unique writes>%llu ", dc->writes, dc->uniqwrites);
 
 		DMEMIT("%d %d:%d %d:%d ",
 		       dc->block_size,
