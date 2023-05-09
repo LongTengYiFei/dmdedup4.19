@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "vmalloc.h": "c",
+        "spinlock.h": "c",
+        "preempt.h": "c",
+        "linkage.h": "c",
+        "thread_info.h": "c"
+    }
+}
