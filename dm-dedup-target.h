@@ -131,10 +131,6 @@ struct dedup_config {
 	int data_flow_mid;
 	int data_flow_right2;
 	int data_flow_right1;
-
-	// 观察lbn-pbn映射用的文件
-	struct file * file_lbn_pbn;
-	mm_segment_t old_fs;
 };
 
 /* Value of the HASH-PBN key-value store */

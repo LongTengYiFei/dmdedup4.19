@@ -197,11 +197,6 @@ static int handle_read(struct dedup_config *dc, struct bio *bio)
 		io->lbn = lbn;
 		io->base_bio = bio;
 
-		// 保存映射关系
-		char buf[128]={0};
-		int len = sprintf(buf, "lbn:%lld, pbn:%lld\n", io->lbn, io->pbn);
-		kernel_write(dc->file_lbn_pbn, buf, len, &dc->file_lbn_pbn->f_pos); 
-		
 		/*
 		 * Prepare bio clone to handle disk read
 		 * clone is created so that we can have our own endio
@@ -1494,17 +1489,6 @@ static int dm_dedup_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	dc->time_flush_meta_ns = 0;
 	dc->time_update_meta_ns = 0;
 
-	// lbn-pbn映射存储文件
-	char *filename = "/home/cyf/data/lbn_pbn";
-	dc->file_lbn_pbn = filp_open(filename, O_CREAT | O_WRONLY | O_TRUNC, 0666);
-	if (IS_ERR(dc->file_lbn_pbn)) {
-        printk(KERN_ERR "Failed to open file %s\n", filename);
-        return PTR_ERR(dc->file_lbn_pbn);
-    }
-	dc->old_fs = get_fs();
-	set_fs(get_ds());
-
-
 	r = dm_set_target_max_io_len(ti, dc->sectors_per_block);
 	if (r)
 		goto bad_kvstore_init;
@@ -1572,10 +1556,6 @@ static void dm_dedup_dtr(struct dm_target *ti)
 	dm_put_device(ti, dc->data_dev);
 	dm_put_device(ti, dc->metadata_dev);
 	desc_table_deinit(dc->desc_table);
-
-	// 结束lbn-pbn映射文件使用
-    set_fs(dc->old_fs);
-    filp_close(dc->file_lbn_pbn, NULL);
 
 	kfree(dc);
 }
