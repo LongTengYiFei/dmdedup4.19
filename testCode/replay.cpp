@@ -21,6 +21,7 @@ enum TraceType{
 	    HOMES,
         WEB, 
         MAIL,
+        TEST,
         NOT
 };
 
@@ -100,7 +101,7 @@ public:
                 printf("req %d\n", replaying_trace_num);
             }
             replaying_trace_num++;
-            
+
             if(trace_is_write){
                 string data = this->data_generated_from_md5(trace_md5, trace_sector_num);
                 this->writeToDevice(data, trace_sector_id, trace_sector_num);
@@ -258,9 +259,17 @@ int main(int argc, char* argv[]) {
     }else if(strcmp(argv[1], "mail") == 0){
         printf("Choose mail\n");
         player.setTraceType(MAIL);
+    }else if(strcmp(argv[1], "test") == 0){
+        printf("Choose test\n");
+        player.setTraceType(TEST);
     }else{
         printf("Not Support homes now\n");
         exit(-1);
+    }
+
+    if(player.getTraceType() == TEST){
+        player.processOneTraceFile("../trace/blkparse/test.blkparse");
+        return 0;
     }
 
     for(int i=1; i<=BLKPARSE_NUM; i++){
