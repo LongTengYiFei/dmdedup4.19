@@ -10,9 +10,6 @@
 
 using namespace std;
 
-#define TRACE_LINE_ITEM_NUM 9
-#define MD5_SIZE 16
-#define BLOCK_SIZE 4096
 #define BLKPARSE_NUM 21
 
 enum TraceType{
@@ -25,11 +22,8 @@ enum TraceType{
 class Stater{
 public:
     Stater(){
-        max_write_sector_address = 0;
-        min_write_sector_address = INT64_MAX;
-        max_read_sector_address = 0;
-        min_read_sector_address = INT64_MAX;
-        tt = NOT;
+        init();
+
     }
 
     void processOneTraceFile(string trace_file_path){
@@ -69,6 +63,7 @@ public:
         
             // sector number
             iss >> item;
+            trace_sector_num = stoi(item);
             
             // operation
             iss >> item;
@@ -87,6 +82,7 @@ public:
             trace_md5 = item;
 
             this->rangeStat(trace_is_write, trace_sector_id);
+            this->readWriteLenStat(trace_is_write, trace_sector_num);
         }
     }
 
@@ -117,9 +113,20 @@ public:
         printf("Access max sector num: %lld\n", this->max_access_sector_address);
         printf("Access min sector num: %lld\n", this->min_access_sector_address);
         printf("Access sector range: %lld\n", this->max_access_sector_address - this->min_access_sector_address);
+        
+        printf("Write 8 num: %lld, Write 16 num: %lld, ", this->write8, this->write16);
+        printf("Write 24 num: %lld, Write 32 num: %lld, ", this->write24, this->write32);
+        printf("Write 40 num: %lld, Write 40 plus: %lld\n", this->write40, this->write40plus);
+        printf("Read 8 num: %lld, Read 16 num: %lld, ", this->read8, this->read16);
+        printf("Read 24 num: %lld, Read 32 num: %lld, ", this->read24, this->read32);
+        printf("Read 40 num: %lld, Read 40 plus: %lld\n", this->read40, this->read40plus);
     }
 
 private:
+    long long write8, write16, write24, write32, write40;
+    long long read8, read16, read24, read32, read40;
+    long long write40plus;
+    long long read40plus;
     long long max_write_sector_address;
     long long min_write_sector_address;
     long long max_read_sector_address;
@@ -127,6 +134,20 @@ private:
     long long max_access_sector_address;
     long long min_access_sector_address;
     TraceType tt;
+
+private:
+    void init(){
+        max_write_sector_address = 0;
+        min_write_sector_address = INT64_MAX;
+        max_read_sector_address = 0;
+        min_read_sector_address = INT64_MAX;
+        
+        tt = NOT;
+
+        write8 = write16 = write24 = write32 = write40 = 0;
+        read8 = read16 = read24 = read32 = read40 = 0;
+        write40plus = read40plus = 0;
+    }
 
     void rangeStat(bool write, long long sector_address){
         // 读写范围
@@ -156,6 +177,24 @@ private:
         this->min_access_sector_address = 
             sector_address < this->min_access_sector_address ? 
             sector_address : this->min_access_sector_address;
+    }
+
+    void readWriteLenStat(bool write, int sector_number){
+        if(write){
+            if(sector_number == 8) write8++;
+            else if(sector_number == 16) write16++;
+            else if(sector_number == 24) write24++;
+            else if(sector_number == 32) write32++;
+            else if(sector_number == 40) write40++;
+            else if(sector_number > 40) write40plus++;
+        }else{
+            if(sector_number == 8) read8++;
+            else if(sector_number == 16) read16++;
+            else if(sector_number == 24) read24++;
+            else if(sector_number == 32) read32++;
+            else if(sector_number == 40) read40++;
+            else if(sector_number > 40) read40plus++;
+        }
     }
 };
 
