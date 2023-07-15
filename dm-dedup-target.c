@@ -174,6 +174,9 @@ static int handle_read(struct dedup_config *dc, struct bio *bio)
 
 	lbn = bio_lbn(dc, bio);
 
+	# ifdef SWITCH_handle_read
+	printk(KERN_DEBUG "lbn = %llu\n", lbn);
+	# endif
 	/* get the pbn in LBN->PBN store for incoming lbn */
 	r = dc->kvs_lbn_pbn->kvs_lookup(dc->kvs_lbn_pbn, (void *)&lbn,
 			sizeof(lbn), (void *)&lbnpbn_value, &vsize);
@@ -714,6 +717,10 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 
 	dc->writes++;
 
+	# ifdef SWITCH_handle_write
+	printk(KERN_DEBUG "BEFORE bio->bi_iter.bi_size %d\n", bio->bi_iter.bi_size);
+	printk(KERN_DEBUG "dc->block_size %d\n", dc->block_size);
+	# endif
 	/* Read-on-write handling */
 	if (bio->bi_iter.bi_size < dc->block_size) {
 		dc->reads_on_writes++;
@@ -722,14 +729,22 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 			return -ENOMEM;
 		bio = new_bio;
 	}
+	# ifdef SWITCH_handle_write
+	printk(KERN_DEBUG "AFTER bio->bi_iter.bi_size %d\n", bio->bi_iter.bi_size);
+	printk(KERN_DEBUG "dc->block_size %d\n", dc->block_size);
+	# endif
 
 	lbn = bio_lbn(dc, bio);
-	// printk(KERN_DEBUG "handle write LBN 0x%x\n", lbn);
+	# ifdef SWITCH_handle_write
+	printk(KERN_DEBUG "handle write LBN 0x%x\n", lbn);
+	#endif
 
 	struct timespec  tv_start1;
 	struct timespec  tv_end1;
 	getnstimeofday(&tv_start1);
 	r = compute_hash_bio(dc->desc_table, bio, hash);
+	
+	# ifdef SWITCH_handle_write
 	printk(KERN_DEBUG "handle write hash %x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x\n", 
 	hash[0], hash[1], hash[2], hash[3], 
 	hash[4], hash[5], hash[6], hash[7], 
@@ -739,13 +754,19 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 	hash[20], hash[21], hash[22], hash[23],
 	hash[24], hash[25], hash[26], hash[27], 
 	hash[28], hash[29], hash[30], hash[31]);
+	#endif
+
 	getnstimeofday(&tv_end1);
 	long elapse1 = (tv_end1.tv_sec - tv_start1.tv_sec) * 1000000000 + (tv_end1.tv_nsec - tv_start1.tv_nsec);
 	dc->time_hash_ns += elapse1;
 
-	if (r)
+	if (r){
+		# ifdef SWITCH_handle_write
+		printk(KERN_DEBUG "handle write advance return\n");
+		# endif
 		return r;
-
+	}
+		
 	/*
 		figure 2 黄色菱形 hash index
 		HASH->PBN
@@ -1005,7 +1026,21 @@ static int dm_dedup_map(struct dm_target *ti, struct bio *bio)
 		trace重放需要修改的参数：lba，读写方向，主设备号，次设备号，md5哈希
 	*/
 	# ifdef SWITCH_dm_dedup_map
-	printk(KERN_DEBUG "dm_dedup_map\n");
+	switch (bio_data_dir(bio)) {
+		case READ:
+			break;
+		case WRITE:
+			printk(KERN_DEBUG "dm_dedup_map WRITE\n");
+			printk(KERN_DEBUG "max io len = %d\n", ti->max_io_len);
+			printk(KERN_DEBUG "target len = %d\n", ti->len);
+			printk(KERN_DEBUG "target begin = %d\n", ti->begin);
+			printk(KERN_DEBUG "size = %d\n", bio->bi_iter.bi_size);
+			#ifdef CONFIG_LBDAF
+			printk(KERN_DEBUG "hello1");
+			#else
+			printk(KERN_DEBUG "hello2");
+			#endif
+	}
 	# endif
 	dedup_defer_bio(ti->private, bio);
 
