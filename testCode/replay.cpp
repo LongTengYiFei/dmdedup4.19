@@ -122,7 +122,10 @@ public:
 
 private:
     string data_generated_from_md5(const string& trace_md5, int sector_num){
-        string ans(trace_md5.c_str(), sector_num*SECTOR_SIZE/trace_md5.size());
+        string ans;
+        ans.reserve(sector_num*SECTOR_SIZE);
+        for(int i=1; i<=ans.capacity()/trace_md5.size(); i++)
+            ans.append(trace_md5);
         return ans;
     }
 

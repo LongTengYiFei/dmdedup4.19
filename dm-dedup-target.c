@@ -719,6 +719,7 @@ static int handle_write(struct dedup_config *dc, struct bio *bio)
 
 	# ifdef SWITCH_handle_write
 	printk(KERN_DEBUG "BEFORE bio->bi_iter.bi_size %d\n", bio->bi_iter.bi_size);
+	printk(KERN_DEBUG "BEFORE bio->bi_iter.bi_sector %d\n", bio->bi_iter.bi_sector);
 	printk(KERN_DEBUG "dc->block_size %d\n", dc->block_size);
 	# endif
 	/* Read-on-write handling */
@@ -1672,9 +1673,13 @@ static void dm_dedup_status(struct dm_target *ti, status_type_t status_type,
 			MAJOR(dc->metadata_dev->bdev->bd_dev),
 			MINOR(dc->metadata_dev->bdev->bd_dev));
 
-		DMEMIT("%llu %llu %llu %llu %llu %llu %llu",
+		DMEMIT("%llu %llu %llu %llu %llu %llu %llu\n",
 		       dc->writes, dc->uniqwrites, dc->dupwrites,
 			dc->reads_on_writes, dc->overwrites, dc->newwrites, dc->gc_counter);
+		
+		// 指纹算法
+		DMEMIT("FP alg: %s", dc->crypto_alg);
+
 		break;
 	case STATUSTYPE_TABLE:
 	// dmsetup table [device_name]
