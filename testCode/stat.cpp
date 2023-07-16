@@ -7,10 +7,13 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <unordered_set>
 
 using namespace std;
 
 #define BLKPARSE_NUM 21
+#define SECTOR_SIZE 512
+#define GB (1024*1024*1024)
 
 enum TraceType{
 	    HOMES,
@@ -83,6 +86,8 @@ public:
 
             this->rangeStat(trace_is_write, trace_sector_id);
             this->readWriteLenStat(trace_is_write, trace_sector_num);
+            this->writeDedupStat(trace_is_write, trace_md5);
+            this->reqDedupStat(trace_md5);
         }
     }
 
@@ -106,13 +111,16 @@ public:
 
         printf("Write max sector num: %lld\n", this->max_write_sector_address);
         printf("Write min sector num: %lld\n", this->min_write_sector_address);
-        printf("Write sector range: %lld\n", this->max_write_sector_address - this->min_write_sector_address);
+        printf("Write sector range: %.2f GiB\n", 
+                                    float(this->max_write_sector_address - this->min_write_sector_address)*SECTOR_SIZE/GB);
         printf("Read max sector num: %lld\n", this->max_read_sector_address);
         printf("Read min sector num: %lld\n", this->min_read_sector_address);
-        printf("Read sector range: %lld\n", this->max_read_sector_address - this->min_read_sector_address);
+        printf("Read sector range: %.2f GiB\n", 
+                                    float(this->max_read_sector_address - this->min_read_sector_address)*SECTOR_SIZE/GB);
         printf("Access max sector num: %lld\n", this->max_access_sector_address);
         printf("Access min sector num: %lld\n", this->min_access_sector_address);
-        printf("Access sector range: %lld\n", this->max_access_sector_address - this->min_access_sector_address);
+        printf("Access sector range: %.2f GiB\n", 
+                                    float(this->max_access_sector_address - this->min_access_sector_address)*SECTOR_SIZE/GB);
         
         printf("Write 8 num: %lld, Write 16 num: %lld, ", this->write8, this->write16);
         printf("Write 24 num: %lld, Write 32 num: %lld, ", this->write24, this->write32);
@@ -120,6 +128,13 @@ public:
         printf("Read 8 num: %lld, Read 16 num: %lld, ", this->read8, this->read16);
         printf("Read 24 num: %lld, Read 32 num: %lld, ", this->read24, this->read32);
         printf("Read 40 num: %lld, Read 40 plus: %lld\n", this->read40, this->read40plus);
+
+        printf("Writes num: %llu, unique writes num: %lu ", this->writes_num, this->fp_set.size());
+        printf("Write Dedup Ratio: %.2f\n", float(this->writes_num)/float(this->fp_set.size()));
+
+        printf("Req num: %llu, unique req num: %lu ", this->req_num, this->fp_set_req.size());
+        printf("Req Dedup Ratio: %.2f\n", float(this->req_num)/float(this->fp_set_req.size()));
+
     }
 
 private:
@@ -135,6 +150,11 @@ private:
     long long min_access_sector_address;
     TraceType tt;
 
+    unsigned long long writes_num;
+    unsigned long long req_num;
+    unordered_set<string> fp_set;
+    unordered_set<string> fp_set_req;
+    
 private:
     void init(){
         max_write_sector_address = 0;
@@ -147,6 +167,9 @@ private:
         write8 = write16 = write24 = write32 = write40 = 0;
         read8 = read16 = read24 = read32 = read40 = 0;
         write40plus = read40plus = 0;
+
+        writes_num = 0;
+        req_num = 0;
     }
 
     void rangeStat(bool write, long long sector_address){
@@ -195,6 +218,18 @@ private:
             else if(sector_number == 40) read40++;
             else if(sector_number > 40) read40plus++;
         }
+    }
+
+    void writeDedupStat(bool is_write, const string& fp){
+        if(is_write){
+            this->writes_num++;
+            this->fp_set.insert(fp);
+        }
+    }
+
+    void reqDedupStat(const string& fp){
+        this->req_num++;
+        this->fp_set_req.insert(fp);
     }
 };
 
