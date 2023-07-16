@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_set>
+#include <openssl/sha.h>
 
 using namespace std;
 
@@ -19,7 +20,30 @@ enum TraceType{
 	    HOMES,
         WEB, 
         MAIL,
+        TEST,
         NOT
+};
+
+struct __attribute__ ((__packed__)) SHA1FP {
+    // 20 bytes
+    uint64_t fp1;
+    uint32_t fp2, fp3, fp4;
+
+    void print() {
+        printf("%lu:%d:%d:%d\n", fp1, fp2, fp3, fp4);
+    }
+};
+
+struct TupleHasher {
+    std::size_t operator()(const SHA1FP &key) const {
+        return key.fp1;
+    }
+};
+
+struct TupleEqualer {
+    bool operator()(const SHA1FP &lhs, const SHA1FP &rhs) const {
+        return lhs.fp1 == rhs.fp1 && lhs.fp2 == rhs.fp2 && lhs.fp3 == rhs.fp3 && lhs.fp4 == rhs.fp4;
+    }
 };
 
 class Stater{
@@ -88,6 +112,7 @@ public:
             this->readWriteLenStat(trace_is_write, trace_sector_num);
             this->writeDedupStat(trace_is_write, trace_md5);
             this->reqDedupStat(trace_md5);
+            this->writeGeneratorStat(trace_is_write, trace_md5, trace_sector_num);
         }
     }
 
@@ -134,7 +159,9 @@ public:
 
         printf("Req num: %llu, unique req num: %lu ", this->req_num, this->fp_set_req.size());
         printf("Req Dedup Ratio: %.2f\n", float(this->req_num)/float(this->fp_set_req.size()));
-
+        
+        printf("Generator Write Dedup Ratio: %.2f\n", 
+                                    float(this->writes_num)/float(this->fp_gen_sha1.size()));
     }
 
 private:
@@ -154,6 +181,7 @@ private:
     unsigned long long req_num;
     unordered_set<string> fp_set;
     unordered_set<string> fp_set_req;
+    unordered_set<SHA1FP, TupleHasher, TupleEqualer> fp_gen_sha1;
     
 private:
     void init(){
@@ -170,6 +198,15 @@ private:
 
         writes_num = 0;
         req_num = 0;
+    }
+
+    void writeGeneratorStat(bool write, const string& md5, int sector_num){
+        if(write){
+            string data = data_generated_from_md5(md5, sector_num);
+            struct SHA1FP sha1;
+            SHA1((unsigned char *)data.c_str(), data.size(), (uint8_t*)&sha1);
+            fp_gen_sha1.emplace(sha1);
+        }
     }
 
     void rangeStat(bool write, long long sector_address){
@@ -231,6 +268,11 @@ private:
         this->req_num++;
         this->fp_set_req.insert(fp);
     }
+
+    string data_generated_from_md5(const string& trace_md5, int sector_num){
+        string ans(trace_md5.c_str(), sector_num*SECTOR_SIZE/trace_md5.size());
+        return ans;
+    }
 };
 
 int main(int argc, char *argv[]) {
@@ -244,9 +286,18 @@ int main(int argc, char *argv[]) {
     }else if(strcmp(argv[1], "mail") == 0){
         printf("Choose mail\n");
         stater.setTraceType(MAIL);
+    }else if(strcmp(argv[1], "test") == 0){
+        printf("Choose test\n");
+        stater.setTraceType(TEST);
     }else{
         printf("Not Support homes now\n");
         exit(-1);
+    }
+
+    if(stater.getTraceType() == TEST){
+        stater.processOneTraceFile("../trace/blkparse/test.blkparse");
+        stater.showStatistic();
+        return 0;
     }
 
     for(int i=1; i<=BLKPARSE_NUM; i++){

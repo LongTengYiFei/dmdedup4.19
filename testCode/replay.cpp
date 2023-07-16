@@ -263,7 +263,7 @@ int main(int argc, char* argv[]) {
         printf("Choose test\n");
         player.setTraceType(TEST);
     }else{
-        printf("Not Support homes now\n");
+        printf("Not Support now\n");
         exit(-1);
     }
 

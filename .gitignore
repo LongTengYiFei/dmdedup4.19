@@ -8,3 +8,7 @@ modules.order
 
 /trace/*
 !/trace/uzipTrace.sh
+
+testCode/stat
+testCode/replay
+testCode/a.out

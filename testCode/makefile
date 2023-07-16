@@ -3,4 +3,4 @@ replay:
 	gcc replay.cpp -lstdc++ -o replay -g
 
 stat:
-	gcc stat.cpp -lstdc++ -o stat -g
+	gcc stat.cpp -lstdc++ -lcrypto -o stat -g 
