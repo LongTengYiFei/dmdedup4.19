@@ -113,6 +113,7 @@ public:
             this->writeDedupStat(trace_is_write, trace_md5);
             this->reqDedupStat(trace_md5);
             this->writeGeneratorStat(trace_is_write, trace_md5, trace_sector_num);
+            this->writeUniqueOffsetStat(trace_is_write, trace_sector_id);
         }
     }
 
@@ -146,7 +147,9 @@ public:
         printf("Access min sector num: %lld\n", this->min_access_sector_address);
         printf("Access sector range: %.2f GiB\n", 
                                     float(this->max_access_sector_address - this->min_access_sector_address)*SECTOR_SIZE/GB);
-        
+        printf("Written unique by offset: %.2f GiB\n",  
+                                    float(this->write_sector_id.size())*SECTOR_SIZE*8/GB);
+
         printf("Write 8 num: %lld, Write 16 num: %lld, ", this->write8, this->write16);
         printf("Write 24 num: %lld, Write 32 num: %lld, ", this->write24, this->write32);
         printf("Write 40 num: %lld, Write 40 plus: %lld\n", this->write40, this->write40plus);
@@ -182,6 +185,7 @@ private:
     unordered_set<string> fp_set;
     unordered_set<string> fp_set_req;
     unordered_set<SHA1FP, TupleHasher, TupleEqualer> fp_gen_sha1;
+    unordered_set<long long> write_sector_id;
     
 private:
     void init(){
@@ -198,6 +202,12 @@ private:
 
         writes_num = 0;
         req_num = 0;
+    }
+
+    void writeUniqueOffsetStat(bool write, long long sector_id){
+        if(write){
+            this->write_sector_id.insert(sector_id);
+        }
     }
 
     void writeGeneratorStat(bool write, const string& md5, int sector_num){

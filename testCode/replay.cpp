@@ -7,6 +7,9 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <sys/time.h>
+
+#include "thread_pool.h"
 
 using namespace std;
 
@@ -27,7 +30,9 @@ enum TraceType{
 
 class TraceReplayer{
 public:
-    TraceReplayer(string _device_path):device_path(_device_path){
+    TraceReplayer(string _device_path):
+    device_path(_device_path)
+    {
         buffAllocation();
         deviceOpen();
         replaying_trace_num = 0;
@@ -111,14 +116,12 @@ public:
         }
     }
 
-    void setTraceType(enum TraceType _tt){
-        this->tt = _tt;
-    }
-
-    enum TraceType getTraceType(){
-        return this->tt;
-    }
-
+    // setters
+    void setTraceType(enum TraceType _tt){this->tt = _tt;}
+    void setThreadNum(int num){this->thread_num = num;}
+    
+    // getters
+    enum TraceType getTraceType(){return this->tt;}
 
 private:
     string data_generated_from_md5(const string& trace_md5, int sector_num){
@@ -227,7 +230,7 @@ private:
     void deviceOpen(){
         fd_device = open(device_path.c_str(), O_RDWR | O_DIRECT);
         if (fd_device == -1) {
-            fprintf(stderr, "Failed to open device: %s\n", strerror(errno));
+            fprintf(stderr, "Failed to open device: %s, %s\n", strerror(errno), device_path.c_str());
             exit(-1);
         }
     }
@@ -246,13 +249,21 @@ private:
     string device_path;
     TraceType tt;
     int replaying_trace_num;
+    int thread_num;
 };
 
 
 int main(int argc, char* argv[]) {
-    string device_path = "/dev/mapper/mydedup"; // replace with your device path
-    TraceReplayer player(device_path);
+    TraceReplayer player("/dev/mapper/mydedup");
 
+    if(argc < 3){
+        cout<<"You need 3 arg at least\n";
+        exit(-1);
+    }
+
+    /*
+        Parsing and setting args
+    */
     if(strcmp(argv[1], "homes") == 0){
         printf("Choose homes\n");
         player.setTraceType(HOMES);
@@ -269,10 +280,18 @@ int main(int argc, char* argv[]) {
         printf("Not Support now\n");
         exit(-1);
     }
-
+    
+    player.setThreadNum(atoi(argv[2]));
+    
+    /*
+        Replay
+    */
+    struct timeval t1, t2;
     if(player.getTraceType() == TEST){
+        gettimeofday(&t1, NULL);
         player.processOneTraceFile("../trace/blkparse/test.blkparse");
-        return 0;
+        gettimeofday(&t2, NULL);
+        goto over;
     }
 
     for(int i=1; i<=BLKPARSE_NUM; i++){
@@ -289,7 +308,13 @@ int main(int argc, char* argv[]) {
         }
         trace_file_path.append(to_string(i));
         trace_file_path.append(".blkparse");
+
+        gettimeofday(&t1, NULL);
         player.processOneTraceFile(trace_file_path);
+        gettimeofday(&t2, NULL);
     }
+
+over:
+    printf("Cost time %ld us\n", (t2.tv_sec-t1.tv_sec)*1000000 + t2.tv_usec-t1.tv_usec);
     return 0;
 }
