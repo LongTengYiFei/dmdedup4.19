@@ -8,6 +8,9 @@
 #include <fstream>
 #include <sstream>
 #include <sys/time.h>
+#include <thread>
+#include <atomic>
+#include <set>
 
 #include "thread_pool.h"
 
@@ -16,16 +19,16 @@ using namespace std;
 #define TRACE_LINE_ITEM_NUM 9
 #define MD5_SIZE 16
 #define BLOCK_SIZE 4096
-#define SECTOR_SIZE 512
+#define SECTOR_SIZE 512LL
 
 #define BLKPARSE_NUM 21
 
 enum TraceType{
-	    HOMES,
-        WEB, 
-        MAIL,
-        TEST,
-        NOT
+    HOMES,
+    WEB, 
+    MAIL,
+    TEST,
+    NOT
 };
 
 class TraceReplayer{
@@ -33,13 +36,16 @@ public:
     TraceReplayer(string _device_path):
     device_path(_device_path)
     {
-        buffAllocation();
         deviceOpen();
         replaying_trace_num = 0;
     }
     ~TraceReplayer(){
-        buffDeallocation();
         deviceClose();
+    }
+    
+    void over(){
+        cv.notify_all();
+        delete threadPool;
     }
 
     void processOneTraceFile(string trace_file_path){
@@ -55,7 +61,7 @@ public:
         long long trace_ns;
         int trace_pid;
         string trace_pname;
-        long long trace_sector_id;
+        off_t trace_sector_id;
         int trace_sector_num;
         bool trace_is_write;
         int trace_major;
@@ -107,21 +113,42 @@ public:
             }
             replaying_trace_num++;
 
-            if(trace_is_write){
-                string data = this->data_generated_from_md5(trace_md5, trace_sector_num);
-                this->writeToDevice(data, trace_sector_id, trace_sector_num);
-            }else{
-                this->readFromDevice(trace_sector_id, trace_sector_num);
-            }
+            string data = data_generated_from_md5(trace_md5, trace_sector_num);
+            threadPool->doJob([this, data, trace_sector_id, trace_sector_num,trace_is_write]() {
+                {
+                    std::unique_lock<std::mutex> l(mut);
+                    while (accessSet.find(trace_sector_id) != accessSet.end()) {
+                        cv.wait(l);
+                    }
+                    accessSet.insert(trace_sector_id);
+                }
+                
+                if(trace_is_write)
+                    writeToDevice(this->fd_device, data, trace_sector_id, trace_sector_num);
+                else
+                    readFromDevice(this->fd_device, trace_sector_id, trace_sector_num);
+
+                {
+                    std::unique_lock<std::mutex> l(mut);
+                    accessSet.erase(trace_sector_id);
+                    cv.notify_all();
+                }
+            });
         }
+        
     }
 
     // setters
     void setTraceType(enum TraceType _tt){this->tt = _tt;}
-    void setThreadNum(int num){this->thread_num = num;}
+    void setThreadNum(int num){
+        this->thread_num = num;
+        threadPool = new AThreadPool(num);
+    }
     
     // getters
     enum TraceType getTraceType(){return this->tt;}
+    int getThreadNum(){return this->thread_num;}
+    int getDeviceFD(){return this->fd_device;}
 
 private:
     string data_generated_from_md5(const string& trace_md5, int sector_num){
@@ -132,99 +159,31 @@ private:
         return ans;
     }
 
-    void writeToDevice(const string& s, int sector_offset, int sector_num){
-        lseek(this->fd_device, sector_offset*512, SEEK_SET);
-        int write_num;
-        switch (sector_num)
-        {
-        case 8:
-            memcpy(buff8, s.c_str(), 8*512);
-            write_num = write(this->fd_device, buff8, 8*512);
-            break;
-        case 16:
-            memcpy(buff16, s.c_str(), 16*512);
-            write_num = write(this->fd_device, buff16, 16*512);
-            break;
-        case 24:
-            memcpy(buff24, s.c_str(), 24*512);   
-            write_num = write(this->fd_device, buff24, 24*512);
-            break;
-        case 32:
-            memcpy(buff32, s.c_str(), 32*512);
-            write_num = write(this->fd_device, buff32, 32*512);
-            break;
-        case 40:
-            memcpy(buff40, s.c_str(), 40*512); 
-            write_num = write(this->fd_device, buff40, 40*512);
-            break;
-        default:
-            break;
-        }
-
+    void writeToDevice(int fd, const string &s, off_t sector_offset, int sector_num){
+        if(sector_num > 40)
+            return ;
+        alignas(SECTOR_SIZE) uint8_t buff[40*SECTOR_SIZE];
+        memcpy(buff, s.c_str(), s.size());
+        int write_num = pwrite(fd, reinterpret_cast<void*>(buff), 
+                               sector_num*SECTOR_SIZE, sector_offset*SECTOR_SIZE);
         if(write_num < 0){
-            printf("Write error %s", strerror(errno));
+            printf("Write error %d\n", errno);
             exit(-1);
         }
     }
 
-    void readFromDevice(int sector_offset, int sector_num){
-        lseek(this->fd_device, sector_offset*512, SEEK_SET);
-        int read_num;
-        switch (sector_num)
-        {
-        case 8:
-            read_num = read(this->fd_device, buff8, 8*512);
-            break;
-        case 16:
-            read_num = read(this->fd_device, buff16, 16*512);
-            break;
-        case 24:
-            read_num = read(this->fd_device, buff24, 24*512);
-            break;
-        case 32:
-            read_num = read(this->fd_device, buff32, 32*512);
-            break;
-        case 40: 
-            read_num = read(this->fd_device, buff40, 40*512);
-            break;
-        default:
-            break;
-        }
+    void readFromDevice(int fd, int sector_offset, int sector_num){
+        if(sector_num > 40)
+            return ;
+
+        alignas(SECTOR_SIZE) uint8_t buff[40*SECTOR_SIZE];
+        int read_num = pread(fd, reinterpret_cast<void*>(buff),
+                             sector_num*SECTOR_SIZE, sector_offset*SECTOR_SIZE);
 
         if(read_num < 0){
-            printf("Read error %s, offset:%d, len:%d", strerror(errno), sector_offset, sector_num);
+            printf("Read error %s", strerror(errno));
             exit(-1);
         }
-    }
-
-    void buffAllocation(){
-        this->buff8 = (char*)malloc(8*512);
-        int result = posix_memalign(&buff8, 4096, 512*8);
-        if (result != 0) printf("buff8 align failed\n");
-
-        this->buff16 = (char*)malloc(512*16);
-        result = posix_memalign(&buff16, 4096, 512*16);
-        if (result != 0) printf("buff16 align failed\n");
-
-        this->buff24 = (char*)malloc(512*24);
-        result = posix_memalign(&buff24, 4096, 512*24);
-        if (result != 0) printf("buff24 align failed\n");
-
-        this->buff32 = (char*)malloc(512*32);
-        result = posix_memalign(&buff32, 4096, 512*32);
-        if (result != 0) printf("buff32 align failed\n");
-
-        this->buff40 = (char*)malloc(512*40);
-        result = posix_memalign(&buff40, 4096, 512*40);
-        if (result != 0) printf("buff40 align failed\n");
-    }
-
-    void buffDeallocation(){
-        free(buff8);
-        free(buff16);
-        free(buff24);
-        free(buff32);
-        free(buff40);
     }
     
     void deviceOpen(){
@@ -240,24 +199,24 @@ private:
     }
 
 private:
-    void * buff8;
-    void * buff16;
-    void * buff24;
-    void * buff32;
-    void * buff40;
     int fd_device;
     string device_path;
     TraceType tt;
     int replaying_trace_num;
     int thread_num;
+
+    std::mutex mut;
+    std::condition_variable cv;
+    AThreadPool *threadPool;
+    std::set<off_t> accessSet;
 };
 
 
 int main(int argc, char* argv[]) {
     TraceReplayer player("/dev/mapper/mydedup");
-
+    
     if(argc < 3){
-        cout<<"You need 3 arg at least\n";
+        cout<<"You need 2 arg at least\n";
         exit(-1);
     }
 
@@ -313,8 +272,9 @@ int main(int argc, char* argv[]) {
         player.processOneTraceFile(trace_file_path);
         gettimeofday(&t2, NULL);
     }
-
+    
 over:
+    player.over();
     printf("Cost time %ld us\n", (t2.tv_sec-t1.tv_sec)*1000000 + t2.tv_usec-t1.tv_usec);
     return 0;
 }

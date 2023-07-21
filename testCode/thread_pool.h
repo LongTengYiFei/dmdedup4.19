@@ -9,9 +9,9 @@
 #include <functional>
 #include <chrono>
 
-namespace cache {
-// A "nice and neat" threadpool that reuses thread objects from StackOverflow
-// https://stackoverflow.com/a/29742586
+//  参考链接：
+//  https://stackoverflow.com/a/29742586
+
 class AThreadPool
 {
   public:
@@ -59,7 +59,7 @@ class AThreadPool
   void threadEntry (int i)
   {
     std::function <void (void)> job;
-
+    
     while (1)
     {
       {
@@ -95,7 +95,6 @@ class AThreadPool
   std::queue <std::function <void (void)>> jobs_;
   std::vector <std::thread> threads_;
 };
-}
 
 
 #endif

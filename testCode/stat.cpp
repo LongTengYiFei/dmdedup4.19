@@ -50,7 +50,6 @@ class Stater{
 public:
     Stater(){
         init();
-
     }
 
     void processOneTraceFile(string trace_file_path){
